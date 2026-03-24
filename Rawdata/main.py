@@ -79,6 +79,7 @@ with h5py.File("rawdataset.h5", "w") as f:
             df_pre = df_pre.bfill()
             # the moving average, pick only number from the file creat the window and take the average. 
             df_smoothed = df_pre.select_dtypes(include=[np.number]).rolling(window=WINDOW_MA, center=True).mean()
+            df_smoothed = df_smoothed.bfill().ffill()
 
             data_pre = df_smoothed.to_numpy()
             dset_pre = member_group.create_dataset(action, data=data_pre)
@@ -184,6 +185,82 @@ with h5py.File("rawdataset.h5", "r") as f:
 
 
 
+
+#------machine learning-------------
+
+#load segmented data from HDF5
+with h5py.File("rawdataset.h5", "r") as f:
+    train_window = f["segmented/train/windows"][:]
+    train_labels = f["segmented/train/labels"][:]
+    test_window = f["segmented/test/windows"][:]
+    test_labels = f["segmented/test/labels"][:]
+
+
+# -------- Feature Extraction --------
+def extract_features(window):
+    window = window[:, :3]
+
+    features = []
+    
+    for axis in range(window.shape[1]):
+        data = window[:, axis]
+        
+        features.append(np.mean(data))
+        features.append(np.std(data))
+        features.append(np.min(data))
+        features.append(np.max(data))
+        features.append(np.ptp(data))
+
+    #magnitude
+    mag = np.sqrt(window[:,0]**2 + window[:,1]**2 + window[:,2]**2)
+    features.append(np.mean(mag))
+    features.append(np.std(mag))
+
+    return np.array(features)
+
+
+#feature extraction
+X_train = np.array([extract_features(w) for w in train_window])
+X_test = np.array([extract_features(w) for w in test_window])
+
+#normalization
+from sklearn.preprocessing import StandardScaler
+
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
+
+
+#model training
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score
+
+model = LogisticRegression(max_iter=1000)
+model.fit(X_train, train_labels)
+y_pred = model.predict(X_test)
+print("Accuracy:", accuracy_score(test_labels, y_pred))
+
+
+
+#learning curve 
+from sklearn.model_selection import learning_curve
+import matplotlib.pyplot as plt
+
+train_sizes, train_scores, test_scores = learning_curve(
+    model, X_train, train_labels, cv=5, scoring='accuracy'
+)
+
+train_mean = train_scores.mean(axis=1)
+test_mean = test_scores.mean(axis=1)
+
+plt.plot(train_sizes, train_mean, label="Training Accuracy")
+plt.plot(train_sizes, test_mean, label="Validation Accuracy")
+
+plt.xlabel("Training Size")
+plt.ylabel("Accuracy")
+plt.legend()
+plt.title("Learning Curve")
+plt.show()
 
 
 
