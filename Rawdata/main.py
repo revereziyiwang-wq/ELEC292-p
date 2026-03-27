@@ -90,35 +90,42 @@ with h5py.File("rawdataset.h5", "w") as f:
     #print("done pre-processing and load the raw data and saving to rawdataset.h5")
     #print()
 
-#----step 3 visulization ------------------------------
-    import matplotlib.pyplot as plt
-    with h5py.File("rawdataset.h5", "r") as f:
-        raw_sample = f["raw/Tony/Back"][:1000]
-        pre_sample = f["pre_processed/Tony/Back"][:1000]
+#----step 3 visulization------------------------------
+import matplotlib.pyplot as plt
 
-    #plot the raw data
-    plt.figure(figsize = (10,5))
-    plt.plot(raw_sample[:, 0], label="Raw X")
-    plt.plot(raw_sample[:, 1], label="Raw Y")
-    plt.plot(raw_sample[:, 2], label="Raw Z")
-    plt.title("Raw Acceleration - (Tony/Back)")
-    plt.xlabel("Sample Index (Time)")
-    plt.ylabel("Acceleration")
-    plt.legend()
-    plt.grid(True)
-    plt.show()
+with h5py.File("rawdataset.h5", "r") as f:
+    for member in members:
+        plt.figure(figsize=(12,10))
+        plt.suptitle(f"All Acceleration Data for {member}", fontsize=16)
+        for i, action in enumerate(actions):
+            raw_sample = f[f"raw/{member}/{action}"][:1000]
+            pre_sample = f[f"pre_processed/{member}/{action}"][:1000]
 
-    #plot the pre-processed data
-    plt.figure(figsize=(10,5))
-    plt.plot(pre_sample[:, 0], label="Preprocessed X")
-    plt.plot(pre_sample[:, 1], label="Preprocessed Y")
-    plt.plot(pre_sample[:, 2], label="Preprocessed Z")
-    plt.title("Preprocessed Acceleration - (Tony/Back)")
-    plt.xlabel("Sample Index (Time)")
-    plt.ylabel("Acceleration")
-    plt.legend()    
-    plt.grid(True)
-    plt.show()
+            #------Raw--------
+            plt.subplot(3, 2, 2*i + 1)
+            plt.plot(raw_sample[:, 0], label="X")
+            plt.plot(raw_sample[:, 1], label="Y")
+            plt.plot(raw_sample[:, 2], label="Z")
+            plt.title(f"{action} - Raw")
+            plt.xlabel("Time")
+            plt.ylabel("Acceleration")
+            plt.legend()
+            plt.grid(True)
+
+            #------Preprocessed--------
+            plt.subplot(3, 2, 2*i + 2)
+            plt.plot(pre_sample[:, 0], label="X (Filtered)")
+            plt.plot(pre_sample[:, 1], label="Y (Filtered)")
+            plt.plot(pre_sample[:, 2], label="Z (Filtered)")
+            plt.title(f"{action} - Preprocessed")
+            plt.xlabel("Time")
+            plt.ylabel("Acceleration")
+            plt.legend()
+            plt.grid(True)
+
+        plt.tight_layout()
+        plt.show()
+
 
 
 with h5py.File("rawdataset.h5", "a") as f: # open the file in append mode to add the segmented data
