@@ -4,6 +4,7 @@ import os
 import h5py
 import random
 from scipy.signal import butter, filtfilt
+import matplotlib.pyplot as plt
 
 # rawdataset.h5
 # ├── raw/                        ← original data from all 9 CSV files
@@ -32,7 +33,7 @@ from scipy.signal import butter, filtfilt
 
 # df the oridinal pandas dataframs
 
-WINDOW_MA = 5 # take the 4 neighbor around and replace the current value with the average of those 5 values
+WINDOW_MA = 17 # take the 4 neighbor around and replace the current value with the average of those 5 values
 
 members = ["Tony", "Thomas", "William"]
 actions = ["Back", "Front", "Right"]
@@ -92,8 +93,6 @@ with h5py.File("rawdataset.h5", "w") as f:
             df_smoothed = df_smoothed.bfill().ffill()
 
             data_pre = df_smoothed.to_numpy() 
-            dset_pre = member_group.create_dataset(action, data=data_pre)
-
             df_pre = df_pre.bfill()
 
             # the high pass filter, remove the drift, use the function we creat before
@@ -105,41 +104,12 @@ with h5py.File("rawdataset.h5", "w") as f:
             # step 2 - high pass filter to remove drift
             data_pre = highpass_filter(df_smoothed.to_numpy())
 
+            dset_pre = member_group.create_dataset(action, data=data_pre)# save the pre-processed data to the hdf5 file 
             #  text, member, action, shape of the pre-processed data
             print(f"[PREPROCESSED] {member}/{action} -> {data_pre.shape}")
             
     #print("done pre-processing and load the raw data and saving to rawdataset.h5")
     #print()
-
-#----step 3 visulization ------------------------------
-import matplotlib.pyplot as plt
-with h5py.File("rawdataset.h5", "r") as f:
-    raw_sample = f["raw/Tony/Back"][:1000]
-    pre_sample = f["pre_processed/Tony/Back"][:1000]
-
-    #plot the raw data
-    plt.figure(figsize = (10,5))
-    plt.plot(raw_sample[:, 0], label="Raw X")
-    plt.plot(raw_sample[:, 1], label="Raw Y")
-    plt.plot(raw_sample[:, 2], label="Raw Z")
-    plt.title("Raw Acceleration - (Tony/Back)")
-    plt.xlabel("Sample Index (Time)")
-    plt.ylabel("Acceleration")
-    plt.legend()
-    plt.grid(True)
-    plt.show()
-
-    #plot the pre-processed data
-    plt.figure(figsize=(10,5))
-    plt.plot(pre_sample[:, 0], label="Preprocessed X")
-    plt.plot(pre_sample[:, 1], label="Preprocessed Y")
-    plt.plot(pre_sample[:, 2], label="Preprocessed Z")
-    plt.title("Preprocessed Acceleration - (Tony/Back)")
-    plt.xlabel("Sample Index (Time)")
-    plt.ylabel("Acceleration")
-    plt.legend()    
-    plt.grid(True)
-    plt.show()
 
 # --------------segmentation class----------------------
 with h5py.File("rawdataset.h5", "a") as f: # open the file in append mode to add the segmented data
@@ -218,7 +188,11 @@ with h5py.File("rawdataset.h5", "a") as f: # open the file in append mode to add
     #check for the data set
     print("Checking the contents of rawdataset.h5:") # ok to remove this print statement, just for checking the data set
 
-
+with h5py.File("rawdataset.h5", "r") as f:
+    raw = f["raw/Tony/Back"][:]
+    pre = f["pre_processed/Tony/Back"][:]
+    print("Raw mean X:", np.mean(raw[:, 0]))
+    print("Pre mean X:", np.mean(pre[:, 0]))
 # with h5py.File("rawdataset.h5", "r") as f:
 #     for member in ["Tony", "Thomas", "William"]:
 #         for action in ["Back", "Front", "Right"]:
@@ -234,7 +208,85 @@ with h5py.File("rawdataset.h5", "a") as f: # open the file in append mode to add
 #     seg_exists = "segmented/train/windows" in f and "segmented/train/labels" in f and "segmented/test/windows" in f and "segmented/test/labels" in f
 #     print(f" segmented: {seg_exists}")
 
+#----step 3 visulization------------------------------
+import matplotlib.pyplot as plt
 
+with h5py.File("rawdataset.h5", "r") as f:
+    train_windows = f["segmented/train/windows"][:]
+    train_labels  = f["segmented/train/labels"][:]
+    
+    for member in members:
+        plt.figure(figsize=(12,10))
+        plt.suptitle(f"All Acceleration Data for {member}", fontsize=16)
+        for i, action in enumerate(actions):
+            raw_sample = f[f"raw/{member}/{action}"][30000:35000] # take the first 1000 rows of the raw data for each action for visualization
+            pre_sample = f[f"pre_processed/{member}/{action}"][30000:35000]
+
+            #------Raw--------
+            plt.subplot(3, 2, 2*i + 1)
+            plt.plot(raw_sample[:, 1], label="X")
+            plt.plot(raw_sample[:, 2], label="Y")
+            plt.plot(raw_sample[:, 3], label="Z")
+            plt.title(f"{action} - Raw")
+            plt.xlabel("Time")
+            plt.ylabel("Acceleration")
+            plt.legend()
+            plt.grid(True)
+
+            #------Preprocessed--------
+            plt.subplot(3, 2, 2*i + 2)
+            plt.plot(pre_sample[:, 1], label="X (Filtered)")
+            plt.plot(pre_sample[:, 2], label="Y (Filtered)")
+            plt.plot(pre_sample[:, 3], label="Z (Filtered)")
+            plt.title(f"{action} - Preprocessed")
+            plt.xlabel("Time")
+            plt.ylabel("Acceleration")
+            plt.legend()
+            plt.grid(True)
+
+        plt.tight_layout()
+        plt.show()
+
+
+walk_windows = train_windows[train_labels == 0] # take the windows with label 0 for walking
+jump_windows = train_windows[train_labels == 1] # take the windows with label
+
+walking_mean_x = np.mean(walk_windows[:, :, 1], axis=1)  # column 1 = x
+jumping_mean_x = np.mean(jump_windows[:, :, 1], axis=1)
+
+fig, axes = plt.subplots(2, 3, figsize=(15, 8))
+fig.suptitle("Feature Distributions: Walking vs Jumping")
+
+axis_names = ["X", "Y", "Z"]
+feature_names = ["Mean", "Std"]
+
+for i, axis in enumerate(range(1, 4)): # loop through x, y, z
+    A = i + 1
+    # mean feature
+    walking_vals = np.mean(walk_windows[:, :, A], axis=1)
+    jumping_vals  = np.mean(jump_windows[:, :, A], axis=1)
+    # mean
+    axes[0, i].hist(walk_windows[:, :, axis].mean(axis=1), bins=20, alpha=0.5, label="Walking")
+    axes[0, i].hist(jump_windows[:, :, axis].mean(axis=1), bins=20, alpha=0.5, label="Jumping")
+    axes[0, i].set_title(f"{feature_names[0]} {axis_names[i]}")
+    axes[0, i].set_xlabel("Mean Acceleration (m/s²)") 
+    axes[0, i].set_ylabel("Number of Windows") 
+    axes[0, i].legend()
+    axes[0, i].grid(True)
+
+    walking_vals = np.std(walk_windows[:, :, A], axis=1)
+    jumping_vals  = np.std(jump_windows[:, :, A], axis=1)
+    # std
+    axes[1, i].hist(walk_windows[:, :, axis].std(axis=1), bins=20, alpha=0.5, label="Walking")
+    axes[1, i].hist(jump_windows[:, :, axis].std(axis=1), bins=20, alpha=0.5, label="Jumping")
+    axes[1, i].set_title(f"{feature_names[1]} {axis_names[i]}")
+    axes[1, i].set_xlabel("Std Acceleration (m/s²)")   # ← x axis label
+    axes[1, i].set_ylabel("Number of Windows")
+    axes[1, i].legend()
+    axes[1, i].grid(True)
+
+plt.tight_layout()
+plt.show()
 
 
 #------machine learning-------------
