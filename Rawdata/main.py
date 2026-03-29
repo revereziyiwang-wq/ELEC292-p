@@ -33,7 +33,7 @@ import matplotlib.pyplot as plt
 
 # df the oridinal pandas dataframs
 
-WINDOW_MA = 17 # take the 4 neighbor around and replace the current value with the average of those 5 values
+WINDOW_MA = 27 # take the 4 neighbor around and replace the current value with the average of those 5 values
 
 members = ["Tony", "Thomas", "William"]
 actions = ["Back", "Front", "Right"]
