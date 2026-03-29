@@ -211,14 +211,18 @@ with h5py.File("rawdataset.h5", "r") as f:
 #----step 3 visulization------------------------------
 import matplotlib.pyplot as plt
 
+#open the data
 with h5py.File("rawdataset.h5", "r") as f:
-    train_windows = f["segmented/train/windows"][:]
-    train_labels  = f["segmented/train/labels"][:]
+    train_windows = f["segmented/train/windows"][:] #shape 
+    train_labels  = f["segmented/train/labels"][:]  # 0 = walking, 1 = jumping
     
+    #loop through all the members and plot all the actions (back front and right), for both raw and preprocessed data
     for member in members:
         plt.figure(figsize=(12,10))
         plt.suptitle(f"All Acceleration Data for {member}", fontsize=16)
+
         for i, action in enumerate(actions):
+            #take sample of raw and processed data for the current member and action
             raw_sample = f[f"raw/{member}/{action}"][30000:35000] # take the first 1000 rows of the raw data for each action for visualization
             pre_sample = f[f"pre_processed/{member}/{action}"][30000:35000]
 
@@ -234,6 +238,7 @@ with h5py.File("rawdataset.h5", "r") as f:
             plt.grid(True)
 
             #------Preprocessed--------
+            #moving average filtering to reduce noise and smooth fluctuations
             plt.subplot(3, 2, 2*i + 2)
             plt.plot(pre_sample[:, 1], label="X (Filtered)")
             plt.plot(pre_sample[:, 2], label="Y (Filtered)")
@@ -247,25 +252,29 @@ with h5py.File("rawdataset.h5", "r") as f:
         plt.tight_layout()
         plt.show()
 
-
+#seperate walking and jumping windows
 walk_windows = train_windows[train_labels == 0] # take the windows with label 0 for walking
-jump_windows = train_windows[train_labels == 1] # take the windows with label
+jump_windows = train_windows[train_labels == 1] # take the windows with label 1 for jumping
 
 walking_mean_x = np.mean(walk_windows[:, :, 1], axis=1)  # column 1 = x
 jumping_mean_x = np.mean(jump_windows[:, :, 1], axis=1)
 
+
+#create histograms to compare the distribution of mean x acceleration for walking and jumping
+#compare the mean and std 
 fig, axes = plt.subplots(2, 3, figsize=(15, 8))
 fig.suptitle("Feature Distributions: Walking vs Jumping")
 
 axis_names = ["X", "Y", "Z"]
 feature_names = ["Mean", "Std"]
 
+#loop through the x,y,z in the dataset
 for i, axis in enumerate(range(1, 4)): # loop through x, y, z
     A = i + 1
-    # mean feature
+    #mean feature
     walking_vals = np.mean(walk_windows[:, :, A], axis=1)
     jumping_vals  = np.mean(jump_windows[:, :, A], axis=1)
-    # mean
+    #mean comparison
     axes[0, i].hist(walk_windows[:, :, axis].mean(axis=1), bins=20, alpha=0.5, label="Walking")
     axes[0, i].hist(jump_windows[:, :, axis].mean(axis=1), bins=20, alpha=0.5, label="Jumping")
     axes[0, i].set_title(f"{feature_names[0]} {axis_names[i]}")
@@ -276,7 +285,7 @@ for i, axis in enumerate(range(1, 4)): # loop through x, y, z
 
     walking_vals = np.std(walk_windows[:, :, A], axis=1)
     jumping_vals  = np.std(jump_windows[:, :, A], axis=1)
-    # std
+    #std comparison 
     axes[1, i].hist(walk_windows[:, :, axis].std(axis=1), bins=20, alpha=0.5, label="Walking")
     axes[1, i].hist(jump_windows[:, :, axis].std(axis=1), bins=20, alpha=0.5, label="Jumping")
     axes[1, i].set_title(f"{feature_names[1]} {axis_names[i]}")
@@ -291,7 +300,7 @@ plt.show()
 
 #------machine learning-------------
 
-#load segmented data from HDF5
+#load segmented data from HDF5, training and testing data
 with h5py.File("rawdataset.h5", "r") as f:
     train_window = f["segmented/train/windows"][:]
     train_labels = f["segmented/train/labels"][:]
@@ -299,75 +308,84 @@ with h5py.File("rawdataset.h5", "r") as f:
     test_labels = f["segmented/test/labels"][:]
 
 
-# -------- Feature Extraction --------
+# --------Feature Extraction--------
 def extract_features(window):
     window = window[:, :3] # take only the first 3 columns for x, y, z acceleration
 
     features = []
     
+    #loop through each acis and extract mean,std,min,max,range 
     for axis in range(window.shape[1]): # loop through each axis x, y, z
         data = window[:, axis] 
         
-        features.append(np.mean(data))
-        features.append(np.std(data))
-        features.append(np.min(data))
-        features.append(np.max(data))
-        features.append(np.ptp(data))
+        features.append(np.mean(data))  #mean
+        features.append(np.std(data))   #std
+        features.append(np.min(data))   #min
+        features.append(np.max(data))   #max
+        features.append(np.ptp(data))   #peak to peak range 
 
-    #magnitude
+    #magnitude (squareroot of (x^2 + y^2 + z^2)) 
     mag = np.sqrt(window[:,0]**2 + window[:,1]**2 + window[:,2]**2) #mag = √(x² + y² + z²)
+    #add mean and std of the magnitude
     features.append(np.mean(mag))
     features.append(np.std(mag))
 
-    return np.array(features) # return a 16 dimensional feature vector for each window. 
+    return np.array(features) # return a 16 feature vector for each window
 
 
-#feature extraction
+#convert each window into feature vector
 X_train = np.array([extract_features(w) for w in train_window])
 X_test = np.array([extract_features(w) for w in test_window])
 
-#normalization
-from sklearn.preprocessing import StandardScaler # standard scaler is a common method for normalizing features
+#----normalization--------
+from sklearn.preprocessing import StandardScaler # standard scaler is a common method for normalizing
 
+#fit the scaler using training data only, then transform both training and testing data sets
 scaler = StandardScaler() # create an instance of the StandardScaler
 X_train = scaler.fit_transform(X_train) # fit the scaler to tarin data and transform it
 X_test = scaler.transform(X_test)
 
 
-#model training
+#----model training-------
 from sklearn.linear_model import LogisticRegression 
 from sklearn.metrics import accuracy_score
+#logistic regression is used to walking =0; jumping = 1
 
-model = LogisticRegression(max_iter=1000) # create a logistic regression model max_iter is the maximum number of iterations for the solver to converge
+#max iteration is 1000, to make sure tehres enough iterations for converging 
+model = LogisticRegression(max_iter=1000)
+
+#train the model using the data, fit the model and the corresponding labels
 model.fit(X_train, train_labels) 
-y_pred = model.predict(X_test) # use trained model to predict labels for test windows
-print("Accuracy:", accuracy_score(test_labels, y_pred))# print the accuracy of the model on the test set
+
+#use trained model to predict labels for test windows
+y_pred = model.predict(X_test) 
+
+#print the accuracy of the model on the test set
+print("Accuracy:", accuracy_score(test_labels, y_pred))
 
 
-
-#learning curve 
+#---------learning curve--------
 from sklearn.model_selection import learning_curve
 import matplotlib.pyplot as plt
 
+#vary training set size 
 train_sizes, train_scores, test_scores = learning_curve(model, X_train, train_labels, cv=5, scoring='accuracy') # tests the model with different amounts of training data
 
+#get the average accuracy for smoother curves
 train_mean = train_scores.mean(axis=1) #  average the scores across the 5 splits
 test_mean = test_scores.mean(axis=1)
-# graph the 2 line for training and validation accuracy as the training size increases.
+
+#graph the 2 line for training and validation accuracy as the training size increases
 plt.plot(train_sizes, train_mean, label="Training Accuracy")
 plt.plot(train_sizes, test_mean, label="Validation Accuracy")
 
-plt.xlabel("Training Size")
-plt.ylabel("Accuracy")
-plt.legend()
+
+plt.xlabel("Training Size") #number of sample used for training
+plt.ylabel("Accuracy")      #accuracy
+plt.legend()  
+
+#large gap = overfitting
+#both low = underfitting
 plt.title("Learning Curve")
+
 plt.show()
-
-
-
-
-
-
-
-
-
