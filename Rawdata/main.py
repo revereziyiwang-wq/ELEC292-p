@@ -3,6 +3,7 @@ import pandas as pd
 import os
 import h5py
 import random
+import pickle
 from scipy.signal import butter, filtfilt
 import matplotlib.pyplot as plt
 
@@ -33,7 +34,7 @@ import matplotlib.pyplot as plt
 
 # df the oridinal pandas dataframs
 
-WINDOW_MA = 15 # take the 4 neighbor around and replace the current value with the average of those 5 values
+WINDOW_MA = 7 # take the 4 neighbor around and replace the current value with the average of those 5 values
 
 members = ["Tony", "Thomas", "William"]
 actions = ["Back", "Front", "Right"]
@@ -68,13 +69,14 @@ with h5py.File("rawdataset.h5", "w") as f:
             # dset.attrs["columns"] = df.select_dtypes(include=[np.number]).columns.tolist()
 
 # ── pre processed data  (Moving Average filter + High Pass Filter) ────────────
-    def highpass_filter(data, cutoff=0.5, fs=200, order=4):
-        # cutoff = remove anything slower than 0.5Hz (the drift)
+    def bandpass_filter(data, lowcutoff=0.5, highcutoff=20, fs=200, order=2):
+        # lowcutoff = 0.5Hz to remove the drift and highcutoff = 20Hz to remove the high frequency noise
         # fs = sampling rate 200Hz
         # order = how strong the filter is
-        nyq = fs / 2                    # nyquist frequency = half of sampling rate
-        normal_cutoff = cutoff / nyq    # normalize the cutoff frequency
-        b, a = butter(order, normal_cutoff, btype='high', analog=False)
+        nyq = fs / 2             # nyquist frequency = half of sampling rate
+        low = lowcutoff / nyq    # normalize the cutoff frequency
+        high = highcutoff / nyq
+        b, a = butter(order, [low, high], btype='band', analog=False) # create the filter coefficients using the Butterworth filter design
         return filtfilt(b, a, data, axis=0)  # apply filter to all columns
 
     pre_processed_group = f.create_group("pre_processed") # the main group for pre-processed data = pre_processed
@@ -102,7 +104,7 @@ with h5py.File("rawdataset.h5", "w") as f:
             df_smoothed = df_smoothed.bfill().ffill()
 
             # step 2 - high pass filter to remove drift
-            data_pre = highpass_filter(df_smoothed.to_numpy())
+            data_pre = bandpass_filter(df_smoothed.to_numpy())
 
             dset_pre = member_group.create_dataset(action, data=data_pre)# save the pre-processed data to the hdf5 file 
             #  text, member, action, shape of the pre-processed data
@@ -150,7 +152,7 @@ with h5py.File("rawdataset.h5", "a") as f: # open the file in append mode to add
     x = random.randint(1, 10)
     # shuffle the windows 
     pairs = list(zip(windows_all, labels_all)) # create pairs of windows and labels zip make the 2 array to one array of pairs w-w1 l - 0 to p -w1, 0
-    random.seed(18) # replace 18 to x to make it really random
+    random.seed(x) # replace 18 to x to make it really random
     random.shuffle(pairs)
     windows_all, labels_all = zip(*pairs) # unzip the pairs back to windows and labels
     windows_all = np.array(windows_all) # back to 2 array 
@@ -223,8 +225,8 @@ with h5py.File("rawdataset.h5", "r") as f:
 
         for i, action in enumerate(actions):
             #take sample of raw and processed data for the current member and action
-            raw_sample = f[f"raw/{member}/{action}"][30000:35000] # take the first 1000 rows of the raw data for each action for visualization
-            pre_sample = f[f"pre_processed/{member}/{action}"][30000:35000]
+            raw_sample = f[f"raw/{member}/{action}"][2500:2600] # take the first 1000 rows of the raw data for each action for visualization
+            pre_sample = f[f"pre_processed/{member}/{action}"][2500:2600] # take the first 1000 rows of the pre-processed data for each action for visualization
 
             #------Raw--------
             plt.subplot(3, 2, 2*i + 1)
@@ -310,8 +312,7 @@ with h5py.File("rawdataset.h5", "r") as f:
 
 # --------Feature Extraction--------
 def extract_features(window):
-    window = window[:, :3] # take only the first 3 columns for x, y, z acceleration
-
+    window = window[:, 1:4] # take only the first 3 columns for x, y, z acceleration
     features = []
     
     #loop through each acis and extract mean,std,min,max,range 
@@ -359,10 +360,16 @@ model.fit(X_train, train_labels)
 
 #use trained model to predict labels for test windows
 y_pred = model.predict(X_test) 
-
 #print the accuracy of the model on the test set
 print("Accuracy:", accuracy_score(test_labels, y_pred))
 
+#save the trained model use for the app development. 
+with open("model.pkl", "wb") as file:
+    pickle.dump({"model": model, "scaler": scaler}, file)
+print("Model saved to model.pkl")
+
+y_pred = model.predict(X_test)
+print("Accuracy:", accuracy_score(test_labels, y_pred))
 
 #---------learning curve--------
 from sklearn.model_selection import learning_curve
