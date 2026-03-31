@@ -1,7 +1,5 @@
 """
 ELEC 292 – Activity Classifier Desktop App
-GUI: Tkinter  |  Plot: Matplotlib embedded  |  Classifier: logistic regression (.pkl)
-
 Tab 1 – Offline:  Load CSV → classify → export labels CSV + timeline plot
 Tab 2 – Live:     Connect to Phyphox over WiFi → stream accelerometer → classify in real-time
 
@@ -27,20 +25,16 @@ from scipy import stats
 from scipy.signal import resample
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Shared constants
-# ─────────────────────────────────────────────────────────────────────────────
-WINDOW_SEC  = 5          # seconds per classification window (must match training)
-TARGET_HZ   = 100        # resample target for live mode
-WIN_SAMPLES = WINDOW_SEC * TARGET_HZ   # 500 samples per window after resampling
-POLL_SEC    = 0.25       # how often to poll Phyphox (seconds)
+#Shared constants
+WINDOW_SEC  = 5          #seconds per classification window (must match training)
+TARGET_HZ   = 100        #resample target for live mode
+WIN_SAMPLES = WINDOW_SEC * TARGET_HZ   #500 samples per window after resampling
+POLL_SEC    = 0.25       #how often to poll Phyphox (seconds)
 LABEL_MAP   = {1: "jumping", 0: "walking"}
 COLORS      = {"walking": "#2563eb", "jumping": "#dc2626"}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Feature extraction  (33 features — MUST match training notebook exactly)
-# ─────────────────────────────────────────────────────────────────────────────
+#Feature extraction  (17 features)
 def extract_features(window: pd.DataFrame) -> list:
     data = window[["x", "y", "z"]].values.astype(float)
     feats = []
@@ -56,12 +50,10 @@ def extract_features(window: pd.DataFrame) -> list:
 
     mag = np.sqrt(window["x"] ** 2 + window["y"] ** 2 + window["z"] ** 2).values
     feats += [np.mean(mag), np.std(mag)]
-    return feats   # 17 features total
+    return feats   #17 features total
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  CSV reader — handles Phyphox column names
-# ─────────────────────────────────────────────────────────────────────────────
+#CSV reader — handles Phyphox column names
 _AXIS_ALIASES = {
     "x": ("x", "acc x", "accx", "ax", "acceleration x", "linear acceleration x (m/s^2)"),
     "y": ("y", "acc y", "accy", "ay", "acceleration y", "linear acceleration y (m/s^2)"),
@@ -91,11 +83,9 @@ def read_csv(path: str) -> pd.DataFrame:
     return df.ffill().bfill()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Phyphox JSON poller
-#  GET http://<ip>/get?accX=full&accY=full&accZ=full&acc_time=full
-#  Returns {"buffer": {"accX": {"buffer": [...]}, ...}}
-# ─────────────────────────────────────────────────────────────────────────────
+#Phyphox JSON poller
+#GET http://<ip>/get?accX=full&accY=full&accZ=full&acc_time=full
+#Returns {"buffer": {"accX": {"buffer": [...]}, ...}}
 PHYPHOX_URL       = "http://{ip}/get?accX=full&accY=full&accZ=full&acc_time=full"
 PHYPHOX_CLEAR_URL = "http://{ip}/control?cmd=clear"
 
@@ -115,37 +105,35 @@ def fetch_phyphox(ip: str, timeout: float = 2.0):
         return None
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Main application
-# ─────────────────────────────────────────────────────────────────────────────
+#Main application
 class App:
     def __init__(self, root: tk.Tk):
         self.root   = root
         self.root.title("Activity Classifier — ELEC 292")
         self.root.resizable(True, True)
 
-        # Shared model state
+        #Shared model state
         self.model  = None
         self.scaler = None
 
-        # Offline tab state
+        #Offline tab state
         self.csv_path      = None
         self.results_df    = None
         self.sampling_rate = tk.IntVar(value=100)
 
-        # Live tab state
+        #Live tab state
         self._live_running  = False
         self._live_thread   = None
-        self._sample_buf    = deque()   # resampled samples waiting to be windowed
-        self._last_seen_len = 0         # how many Phyphox samples already consumed
-        self._live_labels   = []        # classification results so far
+        self._sample_buf    = deque()   #resampled samples waiting to be windowed
+        self._last_seen_len = 0         #how many Phyphox samples already consumed
+        self._live_labels   = []        #classification results so far
         self._live_lock     = threading.Lock()
 
         self._build_ui()
 
-    # ── Build tabbed UI ───────────────────────
+    #Build tabbed UI
     def _build_ui(self):
-        # Shared model bar at the very top
+        #Shared model bar at the very top
         top = tk.Frame(self.root, bg="#1e293b", pady=6, padx=10)
         top.pack(fill=tk.X)
         tk.Button(top, text="📂  Load Model (.pkl)", width=20,
@@ -155,7 +143,7 @@ class App:
                                    bg="#1e293b", anchor="w")
         self.lbl_model.pack(side=tk.LEFT)
 
-        # Notebook
+        #Notebook
         nb = ttk.Notebook(self.root)
         nb.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
 
@@ -167,14 +155,12 @@ class App:
         self._build_offline_tab()
         self._build_live_tab()
 
-        # Global status bar
+        #Global status bar
         self.status = tk.StringVar(value="Ready.")
         tk.Label(self.root, textvariable=self.status, anchor="w",
                  relief=tk.SUNKEN, padx=6, bg="#e2e8f0").pack(fill=tk.X, side=tk.BOTTOM)
 
-    # ─────────────────────────────────────────
-    #  TAB 1 – OFFLINE
-    # ─────────────────────────────────────────
+    #TAB 1   OFFLINE
     def _build_offline_tab(self):
         bar = tk.Frame(self.tab_offline, bg="#f1f5f9", pady=8, padx=10)
         bar.pack(fill=tk.X)
@@ -209,9 +195,7 @@ class App:
         self._placeholder(self.ax_off, self.canvas_off,
                           "Load a CSV and click  ▶  Run Classification")
 
-    # ─────────────────────────────────────────
-    #  TAB 2 – LIVE
-    # ─────────────────────────────────────────
+    #TAB 2   LIVE
     def _build_live_tab(self):
         cfg = tk.Frame(self.tab_live, bg="#f1f5f9", pady=10, padx=12)
         cfg.pack(fill=tk.X)
@@ -233,7 +217,7 @@ class App:
         tk.Button(cfg, text="🗑  Clear", width=8,
                   command=self._clear_live).grid(row=0, column=4, padx=4)
 
-        # Big current-label display
+        #Big current-label display
         badge = tk.Frame(self.tab_live, bg="#fafafa")
         badge.pack(pady=(10, 0))
         tk.Label(badge, text="Current activity:", bg="#fafafa",
@@ -246,7 +230,7 @@ class App:
                                         bg="#fafafa", fg="#6b7280")
         self.lbl_live_count.pack()
 
-        # Live timeline
+        #Live timeline
         self.fig_live, self.ax_live = plt.subplots(figsize=(9, 2.4))
         self.fig_live.patch.set_facecolor("#fafafa")
         self.canvas_live = FigureCanvasTkAgg(self.fig_live, master=self.tab_live)
@@ -255,9 +239,7 @@ class App:
         self._placeholder(self.ax_live, self.canvas_live,
                           "Connect to Phyphox and press  ▶  Start Live")
 
-    # ─────────────────────────────────────────
-    #  Shared helpers
-    # ─────────────────────────────────────────
+    #Shared helpers
     def _placeholder(self, ax, canvas, msg):
         ax.clear()
         ax.set_facecolor("#fafafa")
@@ -312,9 +294,7 @@ class App:
         canvas.figure.tight_layout(pad=1.5)
         canvas.draw()
 
-    # ─────────────────────────────────────────
-    #  TAB 1 – OFFLINE logic
-    # ─────────────────────────────────────────
+    #TAB 1   OFFLINE logic
     def load_csv(self):
         path = filedialog.askopenfilename(
             title="Select input CSV",
@@ -377,14 +357,12 @@ class App:
             self.status.set(f"Saved → {os.path.basename(path)}")
             messagebox.showinfo("Saved", f"Output written to:\n{path}")
 
-    # ─────────────────────────────────────────
-    #  TAB 2 – LIVE logic
-    # ─────────────────────────────────────────
+    #TAB 2   LIVE logic
     def _test_connection(self):
         ip = self.entry_ip.get().strip()
         result = fetch_phyphox(ip)
         if result is None:
-            messagebox.showerror("Connection failed",
+            messagebox.showerror("Connection failed", 
                 "Could not reach Phyphox.\n\n"
                 "• Phone and laptop must be on the same WiFi network\n"
                 "• In Phyphox: open 'Acceleration (without g)' → ⋮ → Remote Access → Start\n"
@@ -404,7 +382,7 @@ class App:
             messagebox.showwarning("No model", "Load a model before starting live mode.")
             return
         ip = self.entry_ip.get().strip()
-        # Clear Phyphox buffer on phone so we start fresh
+        #Clear Phyphox buffer on phone so we start fresh
         try:
             requests.get(PHYPHOX_CLEAR_URL.format(ip=ip), timeout=2)
         except Exception:
@@ -450,7 +428,7 @@ class App:
                     new_z = data["z"][new_start:]
                     new_t = data["t"][new_start:]
 
-                    # Resample new chunk to TARGET_HZ using timestamps
+                    #Resample new chunk to TARGET_HZ using timestamps
                     native_n = len(new_x)
                     if len(new_t) > 1:
                         duration = new_t[-1] - new_t[0]
@@ -467,7 +445,7 @@ class App:
                             self._sample_buf.append((sx, sy, sz))
                         self._last_seen_len = total_now
 
-                    # Drain complete windows from the buffer
+                    #Drain complete windows from the buffer
                     while True:
                         with self._live_lock:
                             if len(self._sample_buf) < WIN_SAMPLES:
@@ -509,9 +487,8 @@ class App:
         self.status.set("Cleared.")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     root = tk.Tk()
-    root.geometry("980x560")
+    root.geometry("1600x900")
     App(root)
     root.mainloop()

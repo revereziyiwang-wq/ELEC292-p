@@ -69,7 +69,7 @@ with h5py.File("rawdataset.h5", "w") as f:
             # dset.attrs["columns"] = df.select_dtypes(include=[np.number]).columns.tolist()
 
 # ── pre processed data  (Moving Average filter + High Pass Filter) ────────────
-    def bandpass_filter(data, lowcutoff=0.5, highcutoff=20, fs=200, order=2):
+    def bandpass_filter(data, lowcutoff=0.5, highcutoff=20, fs=200, order=3):
         # lowcutoff = 0.5Hz to remove the drift and highcutoff = 20Hz to remove the high frequency noise
         # fs = sampling rate 200Hz
         # order = how strong the filter is
@@ -224,9 +224,10 @@ with h5py.File("rawdataset.h5", "r") as f:
         plt.suptitle(f"All Acceleration Data for {member}", fontsize=16)
 
         for i, action in enumerate(actions):
+
             #take sample of raw and processed data for the current member and action
-            raw_sample = f[f"raw/{member}/{action}"][2500:2600] # take the first 1000 rows of the raw data for each action for visualization
-            pre_sample = f[f"pre_processed/{member}/{action}"][2500:2600] # take the first 1000 rows of the pre-processed data for each action for visualization
+            raw_sample = f[f"raw/{member}/{action}"][2500:8000] # take the first 1000 rows of the raw data for each action for visualization
+            pre_sample = f[f"pre_processed/{member}/{action}"][2500:8000] # take the first 1000 rows of the pre-processed data for each action for visualization
 
             #------Raw--------
             plt.subplot(3, 2, 2*i + 1)
