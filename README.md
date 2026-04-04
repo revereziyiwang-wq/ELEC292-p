@@ -30,16 +30,49 @@ git push                            # 3. Send to GitHub
 
 ---------------------------------------------------------------------------------------------
 
-1.Clone the Project (First Time Only)
-Open your terminal and run:
+Cloning the Repository (First Time Setup)
+This only needs to be done once per computer.
+Step 1 — Install Git if you don't have it:
 
-Bash
+Download from https://git-scm.com/downloads
+Install with default settings
+
+Step 2 — Open terminal (VS Code terminal or Windows PowerShell)
+Step 3 — Navigate to where you want the project:
+cd Desktop
+
+Step 4 — Clone the repository:
 git clone https://github.com/revereziyiwang-wq/ELEC292-p.git
-2. The "Daily Routine" (PULL)
-Before you start typing any new code, always get the latest updates from the team:
 
-Bash
-git pull
+Step 5 — Go into the project folder:
+cd ELEC292-p
+
+Step 6 — Install all required packages:
+pip install numpy pandas h5py scipy scikit-learn matplotlib requests
+
+---------------------------------------------------------------------------------
+update
+Step 1 — Always pull first before starting work:
+git pull origin main
+This downloads the latest changes from your teammates so you don't work on outdated code.
+
+Step 2 — Make your changes to the code as normal.
+Step 3 — Check what files you changed:
+git status
+
+Step 4 — Add your changes:
+git add . # add everything
+
+# OR add specific files only
+git add main.py
+git add app_1.py
+
+Step 5 — Save your changes with a message:
+git commit -m "describe what you changed here"
+
+Step 6 — Push to GitHub:
+git push origin main
+
 
 ----------------------------------------------------------------------------------
 
